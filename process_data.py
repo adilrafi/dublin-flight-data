@@ -1,3 +1,6 @@
+import mysql.connector
+import pandas as pd
+
 # Database Connection
 db_config = {
     'user': 'web',
