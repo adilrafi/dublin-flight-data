@@ -7,7 +7,6 @@ def extract_airline_code(callsign):
   return str(callsign).strip()[:3]
 
 
----------------------------------------------------------
 # Unit test code for extract_airline_code function
 
 import unittest
