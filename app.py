@@ -77,23 +77,23 @@ def hello(): # Name of the method
 def flight_stats():
     cur = mysql.cursor()
     
-    # Peak Hour: Returns (hour_of_day, flight_count)
+    # Peak Hour: Returns a tuple like (6, 326)
     cur.execute("SELECT hour_of_day, COUNT(*) FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 1")
-    peak_data = cur.fetchone() 
-    
-    # Top Airline: Returns (airline_code, flight_count)
-    cur.execute("SELECT airline_code, COUNT(*) FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 1")
-    airline_data = cur.fetchone() 
-    
-    # Local Fleet Count: Returns (total_count,)
-    cur.execute("SELECT COUNT(*) FROM processed_flight_data WHERE is_local_fleet = 1")
-    local_count = cur.fetchone() 
+    peak_data = cur.fetchone() # No arguments inside the parentheses
 
-    # CORRECTED: You must include  in the actual variables below
+    # Top Airline: Returns a tuple like ('RYR', 1543)
+    cur.execute("SELECT airline_code, COUNT(*) FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 1")
+    airline_data = cur.fetchone() # No arguments inside the parentheses
+
+    # Local Fleet Count: Returns a tuple like (2737,)
+    cur.execute("SELECT COUNT(*) FROM processed_flight_data WHERE is_local_fleet = 1")
+    local_count = cur.fetchone() # No arguments inside the parentheses
+
+    # Use  to extract just the first value from the database result
     stats = {
-        "peak_hour": f"{peak_data}:00",      # Extracts just the hour
-        "top_airline": airline_data,         # Extracts just the airline code
-        "local_fleet_total": local_count     # Extracts just the count
+        "peak_hour": f"{peak_data}:00",      # Now extracts '6' from (6, 326)
+        "top_airline": airline_data,         # Now extracts 'RYR' from ('RYR', 1543)
+        "local_fleet_total": local_count     # Now extracts '2737' from (2737,)
     }
     return json.dumps(stats)
   
