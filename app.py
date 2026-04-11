@@ -90,11 +90,15 @@ def flight_stats():
     local_count = cur.fetchone() # No arguments inside the parentheses
 
     # Use  to extract just the first value from the database result
-    stats = {
-        "peak_hour": f"{peak_data}:00",      # Now extracts '6' from (6, 326)
-        "top_airline": airline_data,         # Now extracts 'RYR' from ('RYR', 1543)
-        "local_fleet_total": local_count     # Now extracts '2737' from (2737,)
-    }
+stats = {
+    "peak_hour": f"{peak_data[0]}:00",              # only hour
+    "peak_count": peak_data[1],                     # optional: count
+
+    "top_airline": airline_data[0],                 # airline code
+    "top_airline_count": airline_data[1],           # optional: count
+
+    "local_fleet_total": local_count[0]             # single value
+}
     return json.dumps(stats)
   
 if __name__ == "__main__":
