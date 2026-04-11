@@ -72,6 +72,30 @@ def hello(): # Name of the method
     mimetype='application/json'
   )
   return ret #Return the data in a string format
+
+@app.route("/flight_stats")
+def flight_stats():
+    cur = mysql.cursor()
+    
+    # Peak Hour
+    cur.execute("SELECT hour_of_day, COUNT(*) FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 1")
+    peak_data = cur.fetchone()
+    
+    # Top Airline
+    cur.execute("SELECT airline_code, COUNT(*) FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 1")
+    airline_data = cur.fetchone()
+    
+    # Local Fleet Count (using your is_local_fleet feature)
+    cur.execute("SELECT COUNT(*) FROM processed_flight_data WHERE is_local_fleet = 1")
+    local_count = cur.fetchone()
+
+    stats = {
+        "peak_hour": f"{peak_data}:00",
+        "top_airline": airline_data,
+        "local_fleet_total": local_count
+    }
+    return json.dumps(stats)
+  
 if __name__ == "__main__":
   app.run(host='0.0.0.0',port='8080') #Run the flask app at port 8080
   app.run(host='0.0.0.0',port='8080', ssl_context=('cert.pem', 'privkey.pem')) #Run the flask app at port 8080
