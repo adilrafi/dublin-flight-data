@@ -77,28 +77,29 @@ def hello(): # Name of the method
 def flight_stats():
     cur = mysql.cursor()
     
-    # Peak Hour: Returns a tuple like (6, 326)
+    # Peak Hour
     cur.execute("SELECT hour_of_day, COUNT(*) FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 1")
-    peak_data = cur.fetchone() # No arguments inside the parentheses
+    peak_data = cur.fetchone()
 
-    # Top Airline: Returns a tuple like ('RYR', 1543)
+    # Top Airline
     cur.execute("SELECT airline_code, COUNT(*) FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 1")
-    airline_data = cur.fetchone() # No arguments inside the parentheses
+    airline_data = cur.fetchone()
 
-    # Local Fleet Count: Returns a tuple like (2737,)
+    # Local Fleet Count
     cur.execute("SELECT COUNT(*) FROM processed_flight_data WHERE is_local_fleet = 1")
-    local_count = cur.fetchone() # No arguments inside the parentheses
+    local_count = cur.fetchone()
 
-    # Use  to extract just the first value from the database result
-stats = {
-    "peak_hour": f"{peak_data[0]}:00",              # only hour
-    "peak_count": peak_data[1],                     # optional: count
+    # ✅ FIXED INDENTATION
+    stats = {
+        "peak_hour": f"{peak_data[0]}:00",
+        "peak_count": peak_data[1],
 
-    "top_airline": airline_data[0],                 # airline code
-    "top_airline_count": airline_data[1],           # optional: count
+        "top_airline": airline_data[0],
+        "top_airline_count": airline_data[1],
 
-    "local_fleet_total": local_count[0]             # single value
-}
+        "local_fleet_total": local_count[0]
+    }
+
     return json.dumps(stats)
   
 if __name__ == "__main__":
