@@ -77,25 +77,26 @@ def hello(): # Name of the method
 def flight_stats():
     cur = mysql.cursor()
     
-    # Peak Hour
+    # Peak Hour: Returns (hour_of_day, flight_count)
     cur.execute("SELECT hour_of_day, COUNT(*) FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 1")
-    peak_data = cur.fetchone()
+    peak_data = cur.fetchone() 
     
-    # Top Airline
+    # Top Airline: Returns (airline_code, flight_count)
     cur.execute("SELECT airline_code, COUNT(*) FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 1")
-    airline_data = cur.fetchone()
+    airline_data = cur.fetchone() 
     
-    # Local Fleet Count (using your is_local_fleet feature)
+    # Local Fleet Count: Returns (total_count,)
     cur.execute("SELECT COUNT(*) FROM processed_flight_data WHERE is_local_fleet = 1")
-    local_count = cur.fetchone()
+    local_count = cur.fetchone() 
 
+    # CORRECTED: You must include  in the actual variables below
     stats = {
-        "peak_hour": f"{peak_data}:00",
-        "top_airline": airline_data,
-        "local_fleet_total": local_count
+        "peak_hour": f"{peak_data}:00",      # Extracts just the hour
+        "top_airline": airline_data,         # Extracts just the airline code
+        "local_fleet_total": local_count     # Extracts just the count
     }
     return json.dumps(stats)
   
 if __name__ == "__main__":
   app.run(host='0.0.0.0',port='8080') #Run the flask app at port 8080
-  app.run(host='0.0.0.0',port='8080', ssl_context=('cert.pem', 'privkey.pem')) #Run the flask app at port 8080
+  # app.run(host='0.0.0.0',port='8080', ssl_context=('cert.pem', 'privkey.pem')) #Run the flask app at port 8080
