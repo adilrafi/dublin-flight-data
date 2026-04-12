@@ -76,31 +76,80 @@ def hello(): # Name of the method
 @app.route("/flight_stats")
 def flight_stats():
     cur = mysql.cursor()
-    
-    # Peak Hour
-    cur.execute("SELECT hour_of_day, COUNT(*) FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 1")
-    peak_data = cur.fetchone()
 
-    # Top Airline
-    cur.execute("SELECT airline_code, COUNT(*) FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 1")
-    airline_data = cur.fetchone()
+    # Total records for general traffic percentages
+    cur.execute("SELECT COUNT(*) FROM processed_flight_data")
+    total_records = cur.fetchone() 
 
-    # Local Fleet Count
-    cur.execute("SELECT COUNT(*) FROM processed_flight_data WHERE is_local_fleet = 1")
-    local_count = cur.fetchone()
+    # Peak Traffic Windows (% of total traffic volume)
+    cur.execute("""
+        SELECT HOUR(retrieval_time) as hr, COUNT(*) as volume 
+        FROM processed_flight_data 
+        GROUP BY hr ORDER BY volume DESC LIMIT 3
+    """)
+    peaks_raw = cur.fetchall()
+    peak_windows = []
+    for row in peaks_raw:
+        percentage = round((row[3] / total_records) * 100, 2) if total_records > 0 else 0
+        peak_windows.append({"hour": f"{row}:00", "percentage": percentage})
 
-    # ✅ FIXED INDENTATION
-    stats = {
-        "peak_hour": f"{peak_data[0]}:00",
-        "peak_count": peak_data[1],
+    # Airline Market Share (%)
+    cur.execute("""
+        SELECT airline_code, (COUNT(*) * 100.0 / %s) 
+        FROM processed_flight_data 
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 5
+    """, (total_records,))
+    market_raw = cur.fetchall()
+    market_share = [{"airline": r, "share": round(r[3], 2)} for r in market_raw]
 
-        "top_airline": airline_data[0],
-        "top_airline_count": airline_data[1],
+    # Weekend vs Weekday Traffic (%)
+    # Uses DAYOFWEEK where 1=Sunday and 7=Saturday
+    cur.execute("""
+        SELECT IF(DAYOFWEEK(retrieval_time) IN (1, 7), 'Weekend', 'Weekday') as day_type, 
+               COUNT(*) as count 
+        FROM processed_flight_data GROUP BY 1
+    """)
+    day_type_raw = cur.fetchall()
+    traffic_split = {"Weekday": 0, "Weekend": 0}
+    for row in day_type_raw:
+        perc = round((row[3] / total_records) * 100, 1) if total_records > 0 else 0
+        traffic_split[row] = perc
 
-        "local_fleet_total": local_count[0]
+    # Domestic vs International Registration (Unique Aircraft Only)
+    # Using COUNT(DISTINCT icao24) to ensure each aircraft is counted once [1]
+    cur.execute("SELECT COUNT(DISTINCT icao24) FROM processed_flight_data")
+    total_unique_fleet = cur.fetchone()
+
+    cur.execute("""
+        SELECT IF(origin_country = 'Ireland', 'Domestic', 'International') as reg_category, 
+               COUNT(DISTINCT icao24) 
+        FROM processed_flight_data GROUP BY 1
+    """)
+    reg_raw = cur.fetchall()
+    registration_stats = {"Domestic": 0, "International": 0}
+    for row in reg_raw:
+        perc = round((row[3] / total_unique_fleet) * 100, 1) if total_unique_fleet > 0 else 0
+        registration_stats[row] = perc
+
+    # Congestion Prediction Model
+    cur.execute("""
+        SELECT DAYNAME(retrieval_time) 
+        FROM processed_flight_data 
+        GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1
+    """)
+    prediction_row = cur.fetchone()
+    prediction = prediction_row if prediction_row else "Analyzing..."
+
+    # Final Payload for the Integration Test [3]
+    analytics_payload = {
+        "peak_windows": peak_windows,
+        "market_share": market_share,
+        "traffic_split": traffic_split,
+        "fleet_registration": registration_stats,
+        "predicted_busy_day": prediction
     }
-
-    return json.dumps(stats)
+    
+    return json.dumps(analytics_payload)
   
 if __name__ == "__main__":
   app.run(host='0.0.0.0',port='8080') #Run the flask app at port 8080
