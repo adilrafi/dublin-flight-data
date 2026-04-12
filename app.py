@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, jsonify
 from flask import render_template
 from flask import request
 import mysql.connector
@@ -73,121 +73,76 @@ def hello(): # Name of the method
   )
   return ret #Return the data in a string format
 
-from flask import jsonify
-
 @app.route("/flight_stats")
 def flight_stats():
     cur = mysql.cursor()
 
     # Total records
     cur.execute("SELECT COUNT(*) FROM processed_flight_data")
-    total_records = cur.fetchone()[0]
+    res = cur.fetchone()
+    total_records = res if res else 0
 
     # Peak Traffic Windows
     cur.execute("""
-        SELECT HOUR(retrieval_time) as hr, COUNT(*) as volume 
+        SELECT HOUR(retrieval_time), COUNT(*) 
         FROM processed_flight_data 
-        GROUP BY hr ORDER BY volume DESC LIMIT 3
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 3
     """)
     peaks_raw = cur.fetchall()
-
     peak_windows = []
     for row in peaks_raw:
-        hour = row[0]
-        volume = row[1]
-
-        percentage = round((volume / total_records) * 100, 2) if total_records > 0 else 0
-
         peak_windows.append({
-            "hour": f"{hour}:00",
-            "percentage": percentage
+            "hour": f"{row}:00",
+            "perc": round((row[2] / total_records) * 100, 2) if total_records > 0 else 0
         })
 
     # Airline Market Share
     cur.execute("""
         SELECT airline_code, COUNT(*) 
         FROM processed_flight_data 
-        GROUP BY airline_code 
-        ORDER BY COUNT(*) DESC LIMIT 5
+        WHERE airline_code IS NOT NULL AND airline_code != ''
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 5
     """)
     market_raw = cur.fetchall()
+    market_share = [{"airline": r, "share": round((r[2]/total_records)*100, 2)} for r in market_raw]
 
-    market_share = []
-    for r in market_raw:
-        airline = r[0]
-        count = r[1]
-
-        share = round((count / total_records) * 100, 2) if total_records > 0 else 0
-
-        market_share.append({
-            "airline": airline,
-            "share": share
-        })
-
-    # Weekend vs Weekday
+    # Weekend vs Weekday Traffic
     cur.execute("""
-        SELECT 
-            IF(DAYOFWEEK(retrieval_time) IN (1,7), 'Weekend', 'Weekday') as day_type, 
-            COUNT(*) 
-        FROM processed_flight_data 
-        GROUP BY day_type
+        SELECT IF(DAYOFWEEK(retrieval_time) IN (1, 7), 'Weekend', 'Weekday'), COUNT(*) 
+        FROM processed_flight_data GROUP BY 1
     """)
-    day_type_raw = cur.fetchall()
-
+    day_raw = cur.fetchall()
     traffic_split = {"Weekday": 0, "Weekend": 0}
+    for row in day_raw:
+        traffic_split[row] = round((row[2] / total_records) * 100, 1) if total_records > 0 else 0
 
-    for row in day_type_raw:
-        day_type = row[0]
-        count = row[1]
-
-        perc = round((count / total_records) * 100, 1) if total_records > 0 else 0
-
-        traffic_split[day_type] = perc
-
-    # Fleet Registration
+    # Fleet Registration (Unique Aircraft via icao24)
     cur.execute("SELECT COUNT(DISTINCT icao24) FROM processed_flight_data")
-    total_unique_fleet = cur.fetchone()[0]
+    res_u = cur.fetchone()
+    total_unique = res_u if res_u else 0
 
     cur.execute("""
-        SELECT 
-            IF(origin_country = 'Ireland', 'Domestic', 'International') as reg_category, 
-            COUNT(DISTINCT icao24) 
-        FROM processed_flight_data 
-        GROUP BY reg_category
+        SELECT IF(origin_country = 'Ireland', 'Domestic', 'International'), COUNT(DISTINCT icao24) 
+        FROM processed_flight_data GROUP BY 1
     """)
     reg_raw = cur.fetchall()
-
-    registration_stats = {"Domestic": 0, "International": 0}
-
+    registration_split = {"Domestic": 0, "International": 0}
     for row in reg_raw:
-        category = row[0]
-        count = row[1]
+        registration_split[row] = round((row[2] / total_unique) * 100, 1) if total_unique > 0 else 0
 
-        perc = round((count / total_unique_fleet) * 100, 1) if total_unique_fleet > 0 else 0
+    # Prediction
+    cur.execute("SELECT DAYNAME(retrieval_time) FROM processed_flight_data GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1")
+    pred_res = cur.fetchone()
+    predicted_day = pred_res if pred_res else "Data Pending"
 
-        registration_stats[category] = perc
-
-    # Predicted Busy Day (simple logic)
-    cur.execute("""
-        SELECT DAYNAME(retrieval_time), COUNT(*) as cnt
-        FROM processed_flight_data 
-        GROUP BY 1 
-        ORDER BY cnt DESC LIMIT 1
-    """)
-    prediction_row = cur.fetchone()
-
-    prediction = prediction_row[0] if prediction_row else "Analyzing..."
-
-    # Final JSON Response
-    analytics_payload = {
+    # Unified Payload with matching keys
+    return jsonify({
         "peak_windows": peak_windows,
         "market_share": market_share,
         "traffic_split": traffic_split,
-        "fleet_registration": registration_stats,
-        "predicted_busy_day": prediction
-    }
-
-    return jsonify(analytics_payload)
+        "registration_split": registration_split,
+        "predicted_day": predicted_day
+    })
   
 if __name__ == "__main__":
   app.run(host='0.0.0.0',port='8080') #Run the flask app at port 8080
