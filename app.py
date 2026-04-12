@@ -77,31 +77,25 @@ def hello(): # Name of the method
 def flight_stats():
     cur = mysql.cursor()
 
-    # Total records
+    # Total records for general volume calculation [2]
     cur.execute("SELECT COUNT(*) FROM processed_flight_data")
-    total_records = cur.fetchone()[0]
+    total_records = cur.fetchone()
 
-    # Peak Windows
+    # 1. Peak Traffic Windows
     cur.execute("""
         SELECT HOUR(retrieval_time), COUNT(*) 
         FROM processed_flight_data 
         GROUP BY 1 ORDER BY 2 DESC LIMIT 3
     """)
     peaks_raw = cur.fetchall()
-
     peak_windows = []
-    for r in peaks_raw:
-        hour = r[0]
-        count = r[1]
-
-        perc = round((count / total_records) * 100, 2) if total_records else 0
-
+    for row in peaks_raw:
         peak_windows.append({
-            "hour": f"{hour}:00",
-            "perc": perc
+            "hour": f"{row}:00", # Index 0 is the hour
+            "perc": round((row[11] / total_records) * 100, 2) if total_records > 0 else 0 # Index 1 is the count
         })
 
-    # Market Share
+    # 2. Airline Market Share
     cur.execute("""
         SELECT airline_code, COUNT(*) 
         FROM processed_flight_data 
@@ -109,77 +103,42 @@ def flight_stats():
         GROUP BY 1 ORDER BY 2 DESC LIMIT 5
     """)
     market_raw = cur.fetchall()
+    market_share = [{"airline": r, "share": round((r[11]/total_records)*100, 2)} for r in market_raw]
 
-    market_share = []
-    for r in market_raw:
-        airline = r[0]
-        count = r[1]
-
-        share = round((count / total_records) * 100, 2)
-
-        market_share.append({
-            "airline": airline,
-            "share": share
-        })
-
-    # Weekend vs Weekday
+    # 3. Day Density (Weekend vs Weekday)
     cur.execute("""
-        SELECT 
-            IF(DAYOFWEEK(retrieval_time) IN (1,7), 'Weekend', 'Weekday'),
-            COUNT(*)
-        FROM processed_flight_data 
-        GROUP BY 1
+        SELECT IF(DAYOFWEEK(retrieval_time) IN (1, 7), 'Weekend', 'Weekday'), COUNT(*) 
+        FROM processed_flight_data GROUP BY 1
     """)
     day_raw = cur.fetchall()
-
     traffic_split = {"Weekday": 0, "Weekend": 0}
+    for row in day_raw:
+        traffic_split[row] = round((row[11] / total_records) * 100, 1) if total_records > 0 else 0
 
-    for r in day_raw:
-        label = r[0]
-        count = r[1]
-
-        perc = round((count / total_records) * 100, 1)
-
-        traffic_split[label] = perc
-
-    # Registration
+    # 4. Registration (Unique Aircraft via icao24)
     cur.execute("SELECT COUNT(DISTINCT icao24) FROM processed_flight_data")
-    total_unique = cur.fetchone()[0]
+    total_unique = cur.fetchone()
 
     cur.execute("""
-        SELECT 
-            IF(origin_country = 'Ireland', 'Domestic', 'International'),
-            COUNT(DISTINCT icao24)
-        FROM processed_flight_data 
-        GROUP BY 1
+        SELECT IF(origin_country = 'Ireland', 'Domestic', 'International'), COUNT(DISTINCT icao24) 
+        FROM processed_flight_data GROUP BY 1
     """)
     reg_raw = cur.fetchall()
+    registration_split = {"Domestic": 0, "International": 0}
+    for row in reg_raw:
+        registration_split[row] = round((row[11] / total_unique) * 100, 1) if total_unique > 0 else 0
 
-    reg_split = {"Domestic": 0, "International": 0}
+    # 5. Prediction
+    cur.execute("SELECT DAYNAME(retrieval_time) FROM processed_flight_data GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1")
+    pred_res = cur.fetchone()
+    predicted_day = pred_res if pred_res else "Data Pending"
 
-    for r in reg_raw:
-        label = r[0]
-        count = r[1]
-
-        perc = round((count / total_unique) * 100, 1) if total_unique else 0
-
-        reg_split[label] = perc
-
-    # Prediction
-    cur.execute("""
-        SELECT DAYNAME(retrieval_time), COUNT(*) 
-        FROM processed_flight_data 
-        GROUP BY 1 ORDER BY 2 DESC LIMIT 1
-    """)
-    pred = cur.fetchone()
-
-    predicted_day = pred[0] if pred else "Analyzing..."
-
+    # Synchronized JSON payload
     return jsonify({
         "peak_windows": peak_windows,
         "market_share": market_share,
         "traffic_split": traffic_split,
-        "registration_split": reg_split,
+        "registration_split": registration_split,
         "predicted_day": predicted_day
     })
 
