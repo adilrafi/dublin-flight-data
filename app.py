@@ -77,26 +77,20 @@ def hello(): # Name of the method
 def flight_stats():
     cur = mysql.cursor()
 
-    # Total records
+    # Total records for volume calculation
     cur.execute("SELECT COUNT(*) FROM processed_flight_data")
-    res = cur.fetchone()
-    total_records = res if res else 0
+    total_records = cur.fetchone()
 
-    # Peak Traffic Windows
+    # Peak Traffic Windows (% of total daily volume)
     cur.execute("""
         SELECT HOUR(retrieval_time), COUNT(*) 
         FROM processed_flight_data 
         GROUP BY 1 ORDER BY 2 DESC LIMIT 3
     """)
     peaks_raw = cur.fetchall()
-    peak_windows = []
-    for row in peaks_raw:
-        peak_windows.append({
-            "hour": f"{row}:00",
-            "perc": round((row[2] / total_records) * 100, 2) if total_records > 0 else 0
-        })
+    peak_windows = [{"hour": f"{r}:00", "perc": round((r[3]/total_records)*100, 2)} for r in peaks_raw]
 
-    # Airline Market Share
+    # Airline Market Share (% of total volume)
     cur.execute("""
         SELECT airline_code, COUNT(*) 
         FROM processed_flight_data 
@@ -104,46 +98,41 @@ def flight_stats():
         GROUP BY 1 ORDER BY 2 DESC LIMIT 5
     """)
     market_raw = cur.fetchall()
-    market_share = [{"airline": r, "share": round((r[2]/total_records)*100, 2)} for r in market_raw]
+    market_share = [{"airline": r, "share": round((r[3]/total_records)*100, 2)} for r in market_raw]
 
-    # Weekend vs Weekday Traffic
+    # Day Density (Weekend vs Weekday % of volume)
     cur.execute("""
         SELECT IF(DAYOFWEEK(retrieval_time) IN (1, 7), 'Weekend', 'Weekday'), COUNT(*) 
         FROM processed_flight_data GROUP BY 1
     """)
     day_raw = cur.fetchall()
-    traffic_split = {"Weekday": 0, "Weekend": 0}
-    for row in day_raw:
-        traffic_split[row] = round((row[2] / total_records) * 100, 1) if total_records > 0 else 0
+    traffic_split = {r: round((r[3]/total_records)*100, 1) for r in day_raw}
 
-    # Fleet Registration (Unique Aircraft via icao24)
+    # Registration (Unique Aircraft via icao24)
+    # Registration is domestic if origin_country is 'Ireland' [10]
     cur.execute("SELECT COUNT(DISTINCT icao24) FROM processed_flight_data")
-    res_u = cur.fetchone()
-    total_unique = res_u if res_u else 0
+    total_unique = cur.fetchone()
 
     cur.execute("""
         SELECT IF(origin_country = 'Ireland', 'Domestic', 'International'), COUNT(DISTINCT icao24) 
         FROM processed_flight_data GROUP BY 1
     """)
     reg_raw = cur.fetchall()
-    registration_split = {"Domestic": 0, "International": 0}
-    for row in reg_raw:
-        registration_split[row] = round((row[2] / total_unique) * 100, 1) if total_unique > 0 else 0
+    reg_split = {r: round((r[3]/total_unique)*100, 1) for r in reg_raw}
 
-    # Prediction
+    # Prediction (Next busiest day based on historical frequency)
     cur.execute("SELECT DAYNAME(retrieval_time) FROM processed_flight_data GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1")
-    pred_res = cur.fetchone()
-    predicted_day = pred_res if pred_res else "Data Pending"
+    prediction = cur.fetchone()
 
-    # Unified Payload with matching keys
     return jsonify({
         "peak_windows": peak_windows,
         "market_share": market_share,
         "traffic_split": traffic_split,
-        "registration_split": registration_split,
-        "predicted_day": predicted_day
+        "registration_split": reg_split,
+        "predicted_day": prediction
     })
-  
+
+
 if __name__ == "__main__":
   app.run(host='0.0.0.0',port='8080') #Run the flask app at port 8080
   # app.run(host='0.0.0.0',port='8080', ssl_context=('cert.pem', 'privkey.pem')) #Run the flask app at port 8080
