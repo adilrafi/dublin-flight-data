@@ -80,7 +80,7 @@ def flight_stats():
     # Total records
     cur.execute("SELECT COUNT(*) FROM processed_flight_data")
     res = cur.fetchone()
-    total_records = res if res else 0
+    total_records = res if res and res > 0 else 0
 
     # 1. Peak Traffic Windows
     cur.execute("SELECT HOUR(retrieval_time), COUNT(*) FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 3")
@@ -100,7 +100,7 @@ def flight_stats():
     # 4. Registration (Unique Fleet Count)
     cur.execute("SELECT COUNT(DISTINCT icao24) FROM processed_flight_data")
     res_u = cur.fetchone()
-    total_unique = res_u if res_u else 0
+    total_unique = res_u if res_u and res_u > 0 else 0
     cur.execute("SELECT IF(origin_country = 'Ireland', 'Domestic', 'International'), COUNT(DISTINCT icao24) FROM processed_flight_data GROUP BY 1")
     reg_raw = cur.fetchall()
     registration_split = {row: round((row[1]/total_unique)*100, 1) for row in reg_raw} if total_unique > 0 else {"Domestic": 0, "International": 0}
@@ -108,7 +108,7 @@ def flight_stats():
     # 5. Prediction
     cur.execute("SELECT DAYNAME(retrieval_time) FROM processed_flight_data GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1")
     pred_res = cur.fetchone()
-    predicted_day = pred_res if pred_res else "Data Pending"
+    predicted_day = pred_res if pred_res else "Analyzing..."
 
     return jsonify({
         "peak_windows": peak_windows,
@@ -117,6 +117,7 @@ def flight_stats():
         "registration_split": registration_split,
         "predicted_day": predicted_day
     })
+
 if __name__ == "__main__":
   app.run(host='0.0.0.0',port='8080') #Run the flask app at port 8080
   # app.run(host='0.0.0.0',port='8080', ssl_context=('cert.pem', 'privkey.pem')) #Run the flask app at port 8080
