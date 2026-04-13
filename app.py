@@ -73,60 +73,58 @@ def hello(): # Name of the method
   )
   return ret #Return the data in a string format
 
-@app.route("/flight_stats")
-def flight_stats():
+@app.route("/advanced_stats")
+def advanced_stats():
     cur = mysql.cursor()
 
-    # First, get the total count of all records for percentage calculation
-    cur.execute("SELECT COUNT(*) FROM processed_flight_data")
-    total_records = cur.fetchone() # Using  to extract the value from the tuple
+    # 1. Peak Traffic Windows (Hourly)
+    cur.execute("SELECT HOUR(retrieval_time), COUNT(*) FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 3")
+    peak_windows = cur.fetchall()
 
-    # 1. Peak Traffic Windows (Transformed to % of total traffic)
-    # We fetch the top 3 busiest hours
+    # 2. Weekend vs Weekday Traffic
     cur.execute("""
-        SELECT HOUR(retrieval_time) as hr, COUNT(*) as volume 
-        FROM processed_flight_data 
-        GROUP BY hr ORDER BY volume DESC LIMIT 3
+        SELECT IF(DAYOFWEEK(retrieval_time) IN (1, 7), 'Weekend', 'Weekday'), COUNT(*) 
+        FROM processed_flight_data GROUP BY 1
     """)
-    peaks_raw = cur.fetchall()
-    
-    # Transformation: Calculate what percentage of the day's traffic happens in these hours
-    peak_windows = []
-    for row in peaks_raw:
-        hour_label = f"{row}:00"
-        # Calculation: (Hourly Count / Total Records) * 100
-        percentage = round((row[1] / total_records) * 100, 2) if total_records > 0 else 0
-        peak_windows.append({"hour": hour_label, "percentage": percentage})
+    we_vs_wd = cur.fetchall()
 
-    # 2. Airline Market Share (%)
-    # Calculates the percentage of total traffic for the top 5 carriers
+    # 3. Airline Market Share (%)
     cur.execute("""
-        SELECT airline_code, (COUNT(*) * 100.0 / %s) 
-        FROM processed_flight_data 
-        GROUP BY 1 ORDER BY 2 DESC LIMIT 5
-    """, (total_records,))
-    market_raw = cur.fetchall()
-    market_share = [{"airline": r, "share": round(r[1], 2)} for r in market_raw]
-
-    # 3. Congestion Prediction Model
-    # Identifies the next busiest day based on historical frequency
-    cur.execute("""
-        SELECT DAYNAME(retrieval_time) 
-        FROM processed_flight_data 
-        GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1
+        SELECT airline_code, (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM processed_flight_data)) 
+        FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 5
     """)
-    prediction_row = cur.fetchone()
-    prediction = prediction_row if prediction_row else "Analyzing..."
+    market_share = cur.fetchall()
 
-    # Consolidating into a clean JSON payload for the integration test [1]
-    analytics_payload = {
-        "peak_windows": peak_windows,
-        "market_share": market_share,
-        "predicted_busy_day": prediction
+    # 4. Growth Trend (Day-by-Day Change)
+    cur.execute("""
+        SELECT DATE(retrieval_time), COUNT(*) 
+        FROM processed_flight_data GROUP BY 1 ORDER BY 1 ASC
+    """)
+    growth_data = cur.fetchall()
+
+    # 5. International vs Domestic (Based on origin_country field)
+    # If country is Ireland, it's domestic; otherwise international [7]
+    cur.execute("""
+        SELECT IF(origin_country = 'Ireland', 'Domestic', 'International'), COUNT(*) 
+        FROM processed_flight_data GROUP BY 1
+    """)
+    intl_vs_dom = cur.fetchall()
+
+    # 6. Predict Next Busiest Day (Simple Model based on historical mode)
+    cur.execute("SELECT DAYNAME(retrieval_time) FROM processed_flight_data GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1")
+    prediction = cur.fetchone()
+
+    # Formatting into a clean human-readable JSON
+    stats = {
+        "peaks": [{"hour": f"{r}:00", "count": r[1]} for r in peak_windows],
+        "work_split": {r: r[1] for r in we_vs_wd},
+        "market": [{"name": r, "share": round(r[1], 2)} for r in market_share],
+        "trends": [{"date": str(r), "count": r[1]} for r in growth_data],
+        "origin_split": {r: r[1] for r in intl_vs_dom},
+        "next_busy_prediction": prediction if prediction else "Analyzing..."
     }
-    
-    return json.dumps(analytics_payload)
-  
+    return json.dumps(stats)
+
 if __name__ == "__main__":
   app.run(host='0.0.0.0',port='8080') #Run the flask app at port 8080
   # app.run(host='0.0.0.0',port='8080', ssl_context=('cert.pem', 'privkey.pem')) #Run the flask app at port 8080
