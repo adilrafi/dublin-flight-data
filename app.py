@@ -95,7 +95,7 @@ def flight_stats():
     # 3. Day Density
     cur.execute("SELECT IF(DAYOFWEEK(retrieval_time) IN (1, 7), 'Weekend', 'Weekday'), COUNT(*) FROM processed_flight_data GROUP BY 1")
     day_raw = cur.fetchall()
-    traffic_split = {row: round((row[1]/total_records)*100, 1) for row in day_raw} if total_records > 0 else {"Weekday": 0, "Weekend": 0}
+    traffic_split = {row: round((row/total_records)*100, 1) for row in day_raw} if total_records > 0 else {"Weekday": 0, "Weekend": 0}
 
     # 4. Registration (Unique Fleet Count)
     cur.execute("SELECT COUNT(DISTINCT icao24) FROM processed_flight_data")
@@ -103,7 +103,7 @@ def flight_stats():
     total_unique = res_u if res_u and res_u > 0 else 0
     cur.execute("SELECT IF(origin_country = 'Ireland', 'Domestic', 'International'), COUNT(DISTINCT icao24) FROM processed_flight_data GROUP BY 1")
     reg_raw = cur.fetchall()
-    registration_split = {row: round((row[1]/total_unique)*100, 1) for row in reg_raw} if total_unique > 0 else {"Domestic": 0, "International": 0}
+    registration_split = {row: round((row/total_unique)*100, 1) for row in reg_raw} if total_unique > 0 else {"Domestic": 0, "International": 0}
 
     # 5. Prediction
     cur.execute("SELECT DAYNAME(retrieval_time) FROM processed_flight_data GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1")
