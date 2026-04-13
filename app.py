@@ -80,35 +80,91 @@ def flight_stats():
     # Total records
     cur.execute("SELECT COUNT(*) FROM processed_flight_data")
     res = cur.fetchone()
-    total_records = res if res and res > 0 else 0
+    total_records = res[0] if res and res[0] > 0 else 0
 
     # 1. Peak Traffic Windows
-    cur.execute("SELECT HOUR(retrieval_time), COUNT(*) FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 3")
+    cur.execute("""
+        SELECT HOUR(retrieval_time), COUNT(*) 
+        FROM processed_flight_data 
+        GROUP BY 1 
+        ORDER BY 2 DESC 
+        LIMIT 3
+    """)
     peaks_raw = cur.fetchall()
-    peak_windows = [{"hour": f"{row}:00", "perc": round((row[1]/total_records)*100, 2)} for row in peaks_raw] if total_records > 0 else []
+
+    peak_windows = [
+        {
+            "hour": f"{row[0]}:00",
+            "perc": round((row[1] / total_records) * 100, 2)
+        }
+        for row in peaks_raw
+    ] if total_records > 0 else []
 
     # 2. Airline Market Share
-    cur.execute("SELECT airline_code, COUNT(*) FROM processed_flight_data WHERE airline_code != '' GROUP BY 1 ORDER BY 2 DESC LIMIT 5")
+    cur.execute("""
+        SELECT airline_code, COUNT(*) 
+        FROM processed_flight_data 
+        WHERE airline_code != '' 
+        GROUP BY 1 
+        ORDER BY 2 DESC 
+        LIMIT 5
+    """)
     market_raw = cur.fetchall()
-    market_share = [{"airline": r, "share": round((r[1]/total_records)*100, 2)} for r in market_raw] if total_records > 0 else []
+
+    market_share = [
+        {
+            "airline": row[0],
+            "share": round((row[1] / total_records) * 100, 2)
+        }
+        for row in market_raw
+    ] if total_records > 0 else []
 
     # 3. Day Density
-    cur.execute("SELECT IF(DAYOFWEEK(retrieval_time) IN (1, 7), 'Weekend', 'Weekday'), COUNT(*) FROM processed_flight_data GROUP BY 1")
+    cur.execute("""
+        SELECT 
+            IF(DAYOFWEEK(retrieval_time) IN (1, 7), 'Weekend', 'Weekday'),
+            COUNT(*) 
+        FROM processed_flight_data 
+        GROUP BY 1
+    """)
     day_raw = cur.fetchall()
-    traffic_split = {row: round((row[1]/total_records)*100, 1) for row in day_raw} if total_records > 0 else {"Weekday": 0, "Weekend": 0}
+
+    traffic_split = {
+        row[0]: round((row[1] / total_records) * 100, 1)
+        for row in day_raw
+    } if total_records > 0 else {"Weekday": 0, "Weekend": 0}
 
     # 4. Registration
     cur.execute("SELECT COUNT(DISTINCT icao24) FROM processed_flight_data")
     res_u = cur.fetchone()
-    total_unique = res_u if res_u and res_u > 0 else 0
-    cur.execute("SELECT IF(origin_country = 'Ireland', 'Domestic', 'International'), COUNT(DISTINCT icao24) FROM processed_flight_data GROUP BY 1")
+    total_unique = res_u[0] if res_u and res_u[0] > 0 else 0
+
+    cur.execute("""
+        SELECT 
+            IF(origin_country = 'Ireland', 'Domestic', 'International'),
+            COUNT(DISTINCT icao24)
+        FROM processed_flight_data 
+        GROUP BY 1
+    """)
     reg_raw = cur.fetchall()
-    registration_split = {row: round((row[1]/total_unique)*100, 1) for row in reg_raw} if total_unique > 0 else {"Domestic": 0, "International": 0}
+
+    registration_split = {
+        row[0]: round((row[1] / total_unique) * 100, 1)
+        for row in reg_raw
+    } if total_unique > 0 else {"Domestic": 0, "International": 0}
 
     # 5. Prediction
-    cur.execute("SELECT DAYNAME(retrieval_time) FROM processed_flight_data GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1")
+    cur.execute("""
+        SELECT DAYNAME(retrieval_time) 
+        FROM processed_flight_data 
+        GROUP BY 1 
+        ORDER BY COUNT(*) DESC 
+        LIMIT 1
+    """)
     pred_res = cur.fetchone()
-    predicted_day = pred_res if pred_res else "Analyzing..."
+    predicted_day = pred_res[0] if pred_res else "Analyzing..."
+
+    cur.close()
 
     return jsonify({
         "peak_windows": peak_windows,
@@ -116,7 +172,8 @@ def flight_stats():
         "traffic_split": traffic_split,
         "registration_split": registration_split,
         "predicted_day": predicted_day
-    })  
+    })
+
 if __name__ == "__main__":
   app.run(host='0.0.0.0',port='8080') #Run the flask app at port 8080
   # app.run(host='0.0.0.0',port='8080', ssl_context=('cert.pem', 'privkey.pem')) #Run the flask app at port 8080
