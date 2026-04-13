@@ -53,16 +53,25 @@ def add():
     return render_template('add.html')
 
   return '{"Result":"Success"}'
-@app.route("/")
-def hello():
-    cur = mysql.cursor()
-    cur.execute('''SELECT * FROM students''')
-    rv = cur.fetchall()
-    Results=[]
-    for row in rv:
-        Result={'Name': row.replace('\n',' '), 'Email': row[1], 'ID': row[11]}
-        Results.append(Result)
-    return jsonify({'Results': Results, 'count': len(Results)})
+@app.route("/") #Default - Show Data
+def hello(): # Name of the method
+  cur = mysql.cursor() #create a connection to the SQL instance
+  cur.execute('''SELECT * FROM students''') # execute an SQL statment
+  rv = cur.fetchall() #Retreive all rows returend by the SQL statment
+  Results=[]
+  for row in rv: #Format the Output Results and add to return string
+    Result={}
+    Result['Name']=row[0].replace('\n',' ')
+    Result['Email']=row[1]
+    Result['ID']=row[2]
+    Results.append(Result)
+  response={'Results':Results, 'count':len(Results)}
+  ret=app.response_class(
+    response=json.dumps(response),
+    status=200,
+    mimetype='application/json'
+  )
+  return ret #Return the data in a string format
 
 @app.route("/flight_stats")
 def flight_stats():
