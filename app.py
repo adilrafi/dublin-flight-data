@@ -73,57 +73,50 @@ def hello(): # Name of the method
   )
   return ret #Return the data in a string format
 
-@app.route("/advanced_stats")
-def advanced_stats():
+@app.route("/flight_stats")
+def flight_stats():
     cur = mysql.cursor()
 
-    # 1. Peak Traffic Windows (Hourly)
+    # Total records - Extracting integer  to avoid division error
+    cur.execute("SELECT COUNT(*) FROM processed_flight_data")
+    res = cur.fetchone()
+    total_records = res if res and res > 0 else 0
+
+    # 1. Peak Traffic Windows
     cur.execute("SELECT HOUR(retrieval_time), COUNT(*) FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 3")
-    peak_windows = cur.fetchall()
+    peaks_raw = cur.fetchall()
+    peak_windows = [{"hour": f"{row}:00", "perc": round((row[5]/total_records)*100, 2)} for row in peaks_raw] if total_records > 0 else []
 
-    # 2. Weekend vs Weekday Traffic
-    cur.execute("""
-        SELECT IF(DAYOFWEEK(retrieval_time) IN (1, 7), 'Weekend', 'Weekday'), COUNT(*) 
-        FROM processed_flight_data GROUP BY 1
-    """)
-    we_vs_wd = cur.fetchall()
+    # 2. Airline Market Share
+    cur.execute("SELECT airline_code, COUNT(*) FROM processed_flight_data WHERE airline_code != '' GROUP BY 1 ORDER BY 2 DESC LIMIT 5")
+    market_raw = cur.fetchall()
+    market_share = [{"airline": r, "share": round((r[5]/total_records)*100, 2)} for r in market_raw] if total_records > 0 else []
 
-    # 3. Airline Market Share (%)
-    cur.execute("""
-        SELECT airline_code, (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM processed_flight_data)) 
-        FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 5
-    """)
-    market_share = cur.fetchall()
+    # 3. Day Density - Using row as string key for the frontend
+    cur.execute("SELECT IF(DAYOFWEEK(retrieval_time) IN (1, 7), 'Weekend', 'Weekday'), COUNT(*) FROM processed_flight_data GROUP BY 1")
+    day_raw = cur.fetchall()
+    traffic_split = {row: round((row[5]/total_records)*100, 1) for row in day_raw} if total_records > 0 else {"Weekday": 0, "Weekend": 0}
 
-    # 4. Growth Trend (Day-by-Day Change)
-    cur.execute("""
-        SELECT DATE(retrieval_time), COUNT(*) 
-        FROM processed_flight_data GROUP BY 1 ORDER BY 1 ASC
-    """)
-    growth_data = cur.fetchall()
+    # 4. Registration - Extracting total_unique 
+    cur.execute("SELECT COUNT(DISTINCT icao24) FROM processed_flight_data")
+    res_u = cur.fetchone()
+    total_unique = res_u if res_u and res_u > 0 else 0
+    cur.execute("SELECT IF(origin_country = 'Ireland', 'Domestic', 'International'), COUNT(DISTINCT icao24) FROM processed_flight_data GROUP BY 1")
+    reg_raw = cur.fetchall()
+    registration_split = {row: round((row[5]/total_unique)*100, 1) for row in reg_raw} if total_unique > 0 else {"Domestic": 0, "International": 0}
 
-    # 5. International vs Domestic (Based on origin_country field)
-    # If country is Ireland, it's domestic; otherwise international [7]
-    cur.execute("""
-        SELECT IF(origin_country = 'Ireland', 'Domestic', 'International'), COUNT(*) 
-        FROM processed_flight_data GROUP BY 1
-    """)
-    intl_vs_dom = cur.fetchall()
-
-    # 6. Predict Next Busiest Day (Simple Model based on historical mode)
+    # 5. Prediction - Extracting day name string 
     cur.execute("SELECT DAYNAME(retrieval_time) FROM processed_flight_data GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1")
-    prediction = cur.fetchone()
+    pred_res = cur.fetchone()
+    predicted_day = pred_res if pred_res else "Data Pending"
 
-    # Formatting into a clean human-readable JSON
-    stats = {
-        "peaks": [{"hour": f"{r}:00", "count": r[1]} for r in peak_windows],
-        "work_split": {r: r[1] for r in we_vs_wd},
-        "market": [{"name": r, "share": round(r[1], 2)} for r in market_share],
-        "trends": [{"date": str(r), "count": r[1]} for r in growth_data],
-        "origin_split": {r: r[1] for r in intl_vs_dom},
-        "next_busy_prediction": prediction if prediction else "Analyzing..."
-    }
-    return json.dumps(stats)
+    return jsonify({
+        "peak_windows": peak_windows,
+        "market_share": market_share,
+        "traffic_split": traffic_split,
+        "registration_split": registration_split,
+        "predicted_day": predicted_day
+    })
 
 if __name__ == "__main__":
   app.run(host='0.0.0.0',port='8080') #Run the flask app at port 8080
