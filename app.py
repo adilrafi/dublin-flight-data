@@ -77,48 +77,56 @@ def hello(): # Name of the method
 def flight_stats():
     cur = mysql.cursor()
 
-    # Total records
-    cur.execute("SELECT COUNT(*) FROM processed_flight_data")
-    res = cur.fetchone()
-    total_records = res if res and res > 0 else 0
-
-    # 1. Peak Traffic Windows
-    cur.execute("SELECT HOUR(retrieval_time), COUNT(*) FROM processed_flight_data GROUP BY 1 ORDER BY 2 DESC LIMIT 3")
-    peaks_raw = cur.fetchall()
-    # row is the hour, row[5] is the count
-    peak_windows = [{"hour": f"{row}:00", "perc": round((row[5]/total_records)*100, 2)} for row in peaks_raw] if total_records > 0 else []
-
-    # 2. Airline Market Share
-    cur.execute("SELECT airline_code, COUNT(*) FROM processed_flight_data WHERE airline_code != '' GROUP BY 1 ORDER BY 2 DESC LIMIT 5")
-    market_raw = cur.fetchall()
-    market_share = [{"airline": r, "share": round((r[5]/total_records)*100, 2)} for r in market_raw] if total_records > 0 else []
-
-    # 3. Day Density
-    cur.execute("SELECT IF(DAYOFWEEK(retrieval_time) IN (1, 7), 'Weekend', 'Weekday'), COUNT(*) FROM processed_flight_data GROUP BY 1")
-    day_raw = cur.fetchall()
-    traffic_split = {row: round((row[5]/total_records)*100, 1) for row in day_raw} if total_records > 0 else {"Weekday": 0, "Weekend": 0}
-
-    # 4. Registration
+    # 1. Total Unique Aircraft (The Denominator)
+    # This ensures we count each airplane once, regardless of how many times it was seen.
     cur.execute("SELECT COUNT(DISTINCT icao24) FROM processed_flight_data")
-    res_u = cur.fetchone()
-    total_unique = res_u if res_u and res_u > 0 else 0
-    cur.execute("SELECT IF(origin_country = 'Ireland', 'Domestic', 'International'), COUNT(DISTINCT icao24) FROM processed_flight_data GROUP BY 1")
+    total_unique = cur.fetchone()
+
+    # 2. Peak Traffic Windows (% of total unique fleet)
+    cur.execute("""
+        SELECT HOUR(retrieval_time) as hr, COUNT(DISTINCT icao24) as volume 
+        FROM processed_flight_data 
+        GROUP BY hr ORDER BY volume DESC LIMIT 3
+    """)
+    peaks_raw = cur.fetchall()
+    peak_windows = []
+    for row in peaks_raw:
+        # Transformation: What % of the total unique fleet was active during this hour?
+        percentage = round((row[1] / total_unique) * 100, 2) if total_unique > 0 else 0
+        peak_windows.append({"hour": f"{row}:00", "percentage": percentage})
+
+    # 3. Fleet Registration Split (Domestic vs International)
+    # Registration is based on the 'origin_country' field from the OpenSky API [2, 3]
+    cur.execute("""
+        SELECT IF(origin_country = 'Ireland', 'Domestic', 'International') as reg_type, 
+               COUNT(DISTINCT icao24) as unique_count 
+        FROM processed_flight_data GROUP BY 1
+    """)
     reg_raw = cur.fetchall()
-    registration_split = {row: round((row[5]/total_unique)*100, 1) for row in reg_raw} if total_unique > 0 else {"Domestic": 0, "International": 0}
+    registration_split = {"Domestic": 0, "International": 0}
+    for row in reg_raw:
+        # We calculate the percentage of the unique fleet for each category
+        percentage = round((row[1] / total_unique) * 100, 1) if total_unique > 0 else 0
+        registration_split[row] = percentage
 
-    # 5. Prediction
-    cur.execute("SELECT DAYNAME(retrieval_time) FROM processed_flight_data GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1")
-    pred_res = cur.fetchone()
-    predicted_day = pred_res if pred_res else "Analyzing..."
+    # 4. Congestion Prediction Model
+    # Simple mode-based prediction for the next busiest day [4]
+    cur.execute("""
+        SELECT DAYNAME(retrieval_time) 
+        FROM processed_flight_data 
+        GROUP BY 1 ORDER BY COUNT(DISTINCT icao24) DESC LIMIT 1
+    """)
+    prediction_row = cur.fetchone()
+    prediction = prediction_row if prediction_row else "Analyzing..."
 
-    return jsonify({
+    # Consolidating into the final JSON payload for our integration test
+    analytics_payload = {
         "peak_windows": peak_windows,
-        "market_share": market_share,
-        "traffic_split": traffic_split,
         "registration_split": registration_split,
-        "predicted_day": predicted_day
-    })
-
+        "predicted_busy_day": prediction
+    }
+    
+    return json.dumps(analytics_payload)
 
 if __name__ == "__main__":
   app.run(host='0.0.0.0',port='8080') #Run the flask app at port 8080
