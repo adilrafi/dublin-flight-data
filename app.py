@@ -77,57 +77,56 @@ def hello(): # Name of the method
 def flight_stats():
     cur = mysql.cursor()
 
-    # 1. Total Unique Aircraft (The Denominator)
-    # This ensures we count each airplane once, regardless of how many times it was seen.
-    cur.execute("SELECT COUNT(DISTINCT icao24) FROM processed_flight_data")
-    total_unique = cur.fetchone()
+    # First, get the total count of all records for percentage calculation
+    cur.execute("SELECT COUNT(*) FROM processed_flight_data")
+    total_records = cur.fetchone() # Using  to extract the value from the tuple
 
-    # 2. Peak Traffic Windows (% of total unique fleet)
+    # 1. Peak Traffic Windows (Transformed to % of total traffic)
+    # We fetch the top 3 busiest hours
     cur.execute("""
-        SELECT HOUR(retrieval_time) as hr, COUNT(DISTINCT icao24) as volume 
+        SELECT HOUR(retrieval_time) as hr, COUNT(*) as volume 
         FROM processed_flight_data 
         GROUP BY hr ORDER BY volume DESC LIMIT 3
     """)
     peaks_raw = cur.fetchall()
+    
+    # Transformation: Calculate what percentage of the day's traffic happens in these hours
     peak_windows = []
     for row in peaks_raw:
-        # Transformation: What % of the total unique fleet was active during this hour?
-        percentage = round((row[1] / total_unique) * 100, 2) if total_unique > 0 else 0
-        peak_windows.append({"hour": f"{row}:00", "percentage": percentage})
+        hour_label = f"{row}:00"
+        # Calculation: (Hourly Count / Total Records) * 100
+        percentage = round((row[1] / total_records) * 100, 2) if total_records > 0 else 0
+        peak_windows.append({"hour": hour_label, "percentage": percentage})
 
-    # 3. Fleet Registration Split (Domestic vs International)
-    # Registration is based on the 'origin_country' field from the OpenSky API [2, 3]
+    # 2. Airline Market Share (%)
+    # Calculates the percentage of total traffic for the top 5 carriers
     cur.execute("""
-        SELECT IF(origin_country = 'Ireland', 'Domestic', 'International') as reg_type, 
-               COUNT(DISTINCT icao24) as unique_count 
-        FROM processed_flight_data GROUP BY 1
-    """)
-    reg_raw = cur.fetchall()
-    registration_split = {"Domestic": 0, "International": 0}
-    for row in reg_raw:
-        # We calculate the percentage of the unique fleet for each category
-        percentage = round((row[1] / total_unique) * 100, 1) if total_unique > 0 else 0
-        registration_split[row] = percentage
+        SELECT airline_code, (COUNT(*) * 100.0 / %s) 
+        FROM processed_flight_data 
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 5
+    """, (total_records,))
+    market_raw = cur.fetchall()
+    market_share = [{"airline": r, "share": round(r[1], 2)} for r in market_raw]
 
-    # 4. Congestion Prediction Model
-    # Simple mode-based prediction for the next busiest day [4]
+    # 3. Congestion Prediction Model
+    # Identifies the next busiest day based on historical frequency
     cur.execute("""
         SELECT DAYNAME(retrieval_time) 
         FROM processed_flight_data 
-        GROUP BY 1 ORDER BY COUNT(DISTINCT icao24) DESC LIMIT 1
+        GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1
     """)
     prediction_row = cur.fetchone()
     prediction = prediction_row if prediction_row else "Analyzing..."
 
-    # Consolidating into the final JSON payload for our integration test
+    # Consolidating into a clean JSON payload for the integration test [1]
     analytics_payload = {
         "peak_windows": peak_windows,
-        "registration_split": registration_split,
+        "market_share": market_share,
         "predicted_busy_day": prediction
     }
     
     return json.dumps(analytics_payload)
-
+  
 if __name__ == "__main__":
   app.run(host='0.0.0.0',port='8080') #Run the flask app at port 8080
   # app.run(host='0.0.0.0',port='8080', ssl_context=('cert.pem', 'privkey.pem')) #Run the flask app at port 8080
