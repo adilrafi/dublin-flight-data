@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Dublin Air Traffic Intelligence</title>
+
+
+<style>
+    body {
+        font-family: 'Segoe UI', sans-serif;
+        background: #f0f4f8;
+        text-align: center;
+        padding: 20px;
+    }
+
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 15px;
+        max-width: 1200px;
+        margin: auto;
+    }
+
+     .prediction-card {
+        grid-column: 1 / -1;   /* take full width row */
+        max-width: 400px;
+        justify-self: center;  /* center horizontally */
+    }
+
+    .card {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        25px;
+        background: #1a73e8;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: bold;
+        margin-top: 20px;
+    }
+
+    .loading {
+        color: #888;
+        font-style: italic;
+    }
+  </style>
+
+
+</head>
+
+<body>
+
+
+<h1>✈️ Dublin Air Traffic Intelligence Dashboard</h1>
+<h3>Results are based on the data collected since 28 March 2026</h3>
+
+<div class="grid">
+
+    <!-- Peak Hours -->
+    <div class="card">
+        <h3>Peak Hours</h3>
+        <div id="peak-data" class="loading">Loading...</div>
+    </div>
+
+    <!-- Market Share -->
+    <div class="card">
+        <h3>Top 5 Airlines Market Share</h3>
+        <div id="market-data" class="loading">Loading...</div>
+    </div>
+
+    <!-- Week vs Weekend -->
+    <div class="card">
+        <h3>Week vs Weekend</h3>
+        <div class="stat-item"><span>Weekday:</span> <span id="wd-val">0%</span></div>
+        <div class="stat-item"><span>Weekend:</span> <span id="we-val">0%</span></div>
+    </div>
+
+    <!-- Registration -->
+    <div class="card">
+        <h3>Aircraft Registration</h3>
+        <div class="stat-item"><span>Domestic:</span> <span id="dom-val">0%</span></div>
+        <div class="stat-item"><span>International:</span> <span id="intl-val">0%</span></div>
+    </div>
+
+    <!-- Prediction -->
+    <div class="card prediction-card">
+        <h3>Prediction</h3>
+        <p>Next busiest day:</p>
+        <div class="prediction" id="prediction-box">Analyzing...</div>
+    </div>
+
+</div>
+
+<button onclick="updateDashboard()">Refresh Insights</button>
+
+<script>
+    const API_URL = 'http://35.230.128.112:8080/flight_stats';
+    // For local testing use:
+    // const API_URL = 'http://127.0.0.1:5000/flight_stats';
+
+    const updateDashboard = () => {
+
+        // Show loading states
+        document.getElementById('peak-data').innerHTML = "Loading...";
+        document.getElementById('market-data').innerHTML = "Loading...";
+        document.getElementById('prediction-box').innerText = "Loading...";
+
+        fetch(API_URL)
+            .then(res => res.json())
+            .then(data => {
+
+                // Peak Hours
+                document.getElementById('peak-data').innerHTML =
+                    (data.peak_windows && data.peak_windows.length > 0)
+                    ? data.peak_windows.map(p =>
+                        `<div class="stat-item">
+                            <span>${p.hour}</span>
+                            <span>${p.perc}%</span>
+                        </div>`
+                    ).join('')
+                    : "No data available";
+
+                // Market Share
+                document.getElementById('market-data').innerHTML =
+                    (data.market_share && data.market_share.length > 0)
+                    ? data.market_share.map(m =>
+                        `<div class="stat-item">
+                            <span>${m.airline}</span>
+                            <span>${m.share}%</span>
+                        </div>`
+                    ).join('')
+                    : "No data available";
+
+                // Weekday vs Weekend
+                document.getElementById('wd-val').innerText =
+                    (data.traffic_split?.Weekday || 0) + "%";
+
+                document.getElementById('we-val').innerText =
+                    (data.traffic_split?.Weekend || 0) + "%";
+
+                // Registration
+                document.getElementById('dom-val').innerText =
+                    (data.registration_split?.Domestic || 0) + "%";
+
+                document.getElementById('intl-val').innerText =
+                    (data.registration_split?.International || 0) + "%";
+
+                // Prediction
+                document.getElementById('prediction-box').innerText =
+                    data.predicted_day || "Analyzing...";
+            })
+            .catch(err => {
+                console.error("Integration Error:", err);
+
+                document.getElementById('peak-data').innerHTML = "Error loading data";
+                document.getElementById('market-data').innerHTML = "Error loading data";
+                document.getElementById('prediction-box').innerText = "API Error - Check Flask";
+            });
+    };
+
+    // Load on page open
+    window.onload = updateDashboard;
+
+    // Auto refresh every 30 seconds
+    setInterval(updateDashboard, 30000);
+</script>
+
+
+</body>
+</html>
