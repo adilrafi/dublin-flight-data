@@ -6,21 +6,33 @@ Technology Stack & Implementation
 •	OpenSky Network API: Used as the primary data source for acquiring real-time aircraft state vectors for the Dublin Airport bounding box.
 
 •	Flask Framework: Employed to develop the backend system, including the implementation of the API routes (/flight_stats, /add, /) and the serving of the frontend templates.
+
 •	MariaDB: Utilized as the relational database management system for storing and managing the acquired flight data and student records.
+
 •	Pandas: Integrated for data preprocessing, cleaning, and transformation of the raw API responses into structured dataframes for analysis.
+
 •	mysql-connector-python: Used to provide the critical connection between the Python/Flask backend and the MariaDB SQL instance.
+
 •	Requests Library: Used to facilitate the OAuth2 token generation and subsequent HTTP GET requests to the OpenSky Network API.
+
 •	Flask-CORS: Integrated to handle Cross-Origin Resource Sharing, allowing the frontend to interact securely with the backend API.
+
 •	Ubuntu VM (Azure/Google Cloud): Hosted the entire application environment to ensure persistent data collection and 24/7 API availability.
+
 •	Automated Task Scheduling (Crontab): Implemented system-level cron jobs to automate the 15-minute data collection and 30-minute processing cycles, ensuring the database remains current without manual intervention.
+
 •	Responsive Web Dashboard: Developed a custom frontend using HTML, CSS, and JavaScript that performs asynchronous fetch requests to the Flask API to display real-time traffic intelligence and predictions.
 
 Key Features & Transformations
 
 •	Peak Traffic Analysis: SQL-driven logic to identify the busiest hours for Dublin Airport traffic.
+
 •	Market Share Intelligence: Quantitative analysis of airline dominance based on active aircraft counts.
+
 •	Operational Density: Dynamic calculation of traffic splits between weekdays and weekends.
+
 •	Fleet Origin Tracking: Differentiation between domestic (Irish-registered) and international aircraft based on origin_country metadata.
+
 •	Predictive Insights: Implementation of a basic model to estimate the next busiest day based on historical retrieval patterns.
 
 
