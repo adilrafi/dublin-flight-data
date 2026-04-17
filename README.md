@@ -62,4 +62,4 @@ o	Example: */15 * * * * /home/<user>/venv/bin/python3 /home/<user>/Programming-D
 •	Integration: Ensure the fetch URL in the JavaScript section of index.html points to your VM's public IP address at port 8080.
 •	View Results: Open your browser and navigate to http://<Your-VM-IP>/index.html to view the live Dublin Air Traffic Intelligence Dashboard
 
-
+Note: I used AI to help understand the code and various aspects of the project. Additionally, I used AI to rephrase the above text.
